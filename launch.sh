@@ -27,7 +27,7 @@ RAM_GBS="${input_ram:-12}"
 read -r -p "Enter Boot Volume size in GB [50-200, Default: 100]: " input_boot
 BOOT_GBS="${input_boot:-100}"
 
-echo ">> Configured: ${OCPUS} OCPU | ${RAM_GBS} GB RAM \vert{}${BOOT_GBS} GB Boot Volume"
+echo ">> Configured: ${OCPUS} OCPU | ${RAM_GBS} GB RAM |${BOOT_GBS} GB Boot Volume"
 
 # 3. SSH Key Handling
 PUB_KEY="${SSH_KEY:-$2}"
@@ -91,7 +91,7 @@ VCN_NAME="${MY_NAME}-vcn"
 echo ">> Verifying isolated network: ${VCN_NAME}..."
 VCN_ID=$(oci network vcn list --compartment-id "$COMP_ID" --display-name "$VCN_NAME" --query "data[0].id" --raw-output 2>/dev/null || true)
 
-if [ -z "$VCN_ID" ] || [ "$VCN_ID" == "None" ] \vert{}\vert{} [ "$VCN_ID" == "null" ]; then
+if [ -z "$VCN_ID" ] || [ "$VCN_ID" == "None" ] || [ "$VCN_ID" == "null" ]; then
   echo ">> Creating dedicated VCN (192.168.0.0/16)..."
   VCN_ID=$(oci network vcn create --compartment-id "$COMP_ID" --cidr-block "192.168.0.0/16" --display-name "$VCN_NAME" --query "data.id" --raw-output)
 
@@ -132,7 +132,7 @@ echo "--------------------------------------------------"
 
 while true; do
   FD=${FDS[$((COUNT % 3))]}
-  echo "[Attempt $COUNT] Probing capacity in$FD..."
+  echo "[Attempt $COUNT] Probing capacity in $FD..."
 
   OUTPUT=$(oci compute instance launch \
     --compartment-id "$COMP_ID" \
