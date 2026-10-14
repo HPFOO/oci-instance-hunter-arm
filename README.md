@@ -1,4 +1,4 @@
-# ⚡ OCI Free Tier ARM Instance Hunter (`oci-instance-hunter-arm`)
+# 👨🏻‍💻 OCI Free Tier ARM Instance Hunter (`oci-instance-hunter-arm`)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-Oracle%20Cloud-red.svg)](https://cloud.oracle.com/)
