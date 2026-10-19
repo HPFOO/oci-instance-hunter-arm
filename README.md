@@ -32,26 +32,30 @@ When you execute the script, it prompts you to enter your desired compute hardwa
 
 ---
 
-## 🔑 How SSH Keys Work (Beginner Guide)
+### 🔑 How SSH Keys Work (Beginner Guide)
 
 If you are new to SSH or do not have a key, don't worry—the script handles everything:
 
-1. **Option 3 (Auto-Generate - Recommended for Beginners):**
-   - The script creates a new ED25519 key pair on the fly inside Cloud Shell at `~/.ssh/id_ed25519`.
-2. **How to get the key onto your local Mac / PC:**
-   - **Method A (Copy-Paste Text):** In Cloud Shell, run:
+1. **Option 3 (Auto-Generate - Recommended for Beginners)**:
+   - The script creates a new, FIPS-compliant RSA 4096-bit key pair on the fly inside Cloud Shell at `~/.ssh/id_rsa`.
+
+2. **How to get the key onto your local Mac / PC**:
+   - **Method A (Copy-Paste Text)**: In Cloud Shell, run:
      ```bash
-     cat ~/.ssh/id_ed25519
+     cat ~/.ssh/id_rsa
      ```
      Copy the entire output starting from `-----BEGIN OPENSSH PRIVATE KEY-----` to `-----END OPENSSH PRIVATE KEY-----`. Save it on your local machine (e.g., `~/.ssh/oci_arm_key`) and set strict permissions:
      ```bash
      chmod 600 ~/.ssh/oci_arm_key
      ```
-   - **Method B (Download File via Web GUI):** Click the **Gear / Ellipsis** icon in the Cloud Shell top-right menu -> select **Download File** -> enter `/home/<your-user>/.ssh/id_ed25519`.
-3. **Connect to your server:**
+
+   - **Method B (Download File via Web GUI)**: 
+     Click the **Gear / Ellipsis icon** in the Cloud Shell top-right menu -> select **Download File** -> enter `/home/<your-user>/.ssh/id_rsa` (or simply `.ssh/id_rsa`).
+
+3. **Connect to your server**:
    ```bash
    ssh -i ~/.ssh/oci_arm_key ubuntu@<YOUR_PUBLIC_IP>
-   ```
+
 
 ---
 
