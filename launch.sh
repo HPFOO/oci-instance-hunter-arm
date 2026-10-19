@@ -7,7 +7,7 @@
 set -e
 
 echo "=================================================="
-echo "   OCI Free Tier ARM Instance Auto-Provisioner    "
+echo "    OCI Free Tier ARM Instance Auto-Provisioner   "
 echo "=================================================="
 
 # 1. Instance Naming
@@ -27,11 +27,12 @@ RAM_GBS="${input_ram:-12}"
 read -r -p "Enter Boot Volume size in GB [50-200, Default: 100]: " input_boot
 BOOT_GBS="${input_boot:-100}"
 
-echo ">> Configured: ${OCPUS} OCPU | ${RAM_GBS} GB RAM |${BOOT_GBS} GB Boot Volume"
+echo ">> Configured: ${OCPUS} OCPU | ${RAM_GBS} GB RAM \vert{}${BOOT_GBS} GB Boot Volume"
 
-# 3. SSH Key Handling
+# 3. SSH Key Handling (FIPS Mode Compliant)
 PUB_KEY="${SSH_KEY:-$2}"
 KEY_AUTO_GENERATED=0
+GENERATED_KEY_PATH=""
 
 if [ -z "$PUB_KEY" ]; then
   if [ -f "$HOME/.ssh/id_rsa.pub" ]; then
@@ -40,11 +41,14 @@ if [ -z "$PUB_KEY" ]; then
   elif [ -f "$HOME/.ssh/id_ed25519.pub" ]; then
     echo ">> Detected existing key: ~/.ssh/id_ed25519.pub"
     PUB_KEY=$(cat "$HOME/.ssh/id_ed25519.pub")
+  elif [ -f "$HOME/.ssh/id_ecdsa.pub" ]; then
+    echo ">> Detected existing key: ~/.ssh/id_ecdsa.pub"
+    PUB_KEY=$(cat "$HOME/.ssh/id_ecdsa.pub")
   else
     echo ">> No default SSH key detected."
     echo "   1) Specify custom key file path (e.g., ~/.ssh/my_key.pub)"
     echo "   2) Paste public key string directly"
-    echo "   3) Auto-generate a new ED25519 key pair on the fly"
+    echo "   3) Auto-generate a new RSA 4096-bit key pair (FIPS Compliant)"
     read -r -p "Select option [1/2/3, Default: 3]: " key_choice
     key_choice="${key_choice:-3}"
 
@@ -63,10 +67,11 @@ if [ -z "$PUB_KEY" ]; then
     elif [ "$key_choice" == "2" ]; then
       read -r -p "Paste your full SSH Public Key string: " PUB_KEY
     else
-      echo ">> Generating a new ED25519 key pair at ~/.ssh/id_ed25519..."
+      GENERATED_KEY_PATH="$HOME/.ssh/id_rsa"
+      echo ">> Generating a new RSA 4096-bit key pair at $GENERATED_KEY_PATH..."
       mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
-      ssh-keygen -t ed25519 -N "" -f "$HOME/.ssh/id_ed25519" -C "oci-arm-auto-key"
-      PUB_KEY=$(cat "$HOME/.ssh/id_ed25519.pub")
+      ssh-keygen -t rsa -b 4096 -N "" -f "$GENERATED_KEY_PATH" -C "oci-arm-auto-key"
+      PUB_KEY=$(cat "${GENERATED_KEY_PATH}.pub")
       KEY_AUTO_GENERATED=1
       echo ">> Key created successfully!"
     fi
@@ -91,7 +96,7 @@ VCN_NAME="${MY_NAME}-vcn"
 echo ">> Verifying isolated network: ${VCN_NAME}..."
 VCN_ID=$(oci network vcn list --compartment-id "$COMP_ID" --display-name "$VCN_NAME" --query "data[0].id" --raw-output 2>/dev/null || true)
 
-if [ -z "$VCN_ID" ] || [ "$VCN_ID" == "None" ] || [ "$VCN_ID" == "null" ]; then
+if [ -z "$VCN_ID" ] || [ "$VCN_ID" == "None" ] \vert{}\vert{} [ "$VCN_ID" == "null" ]; then
   echo ">> Creating dedicated VCN (192.168.0.0/16)..."
   VCN_ID=$(oci network vcn create --compartment-id "$COMP_ID" --cidr-block "192.168.0.0/16" --display-name "$VCN_NAME" --query "data.id" --raw-output)
 
@@ -132,7 +137,7 @@ echo "--------------------------------------------------"
 
 while true; do
   FD=${FDS[$((COUNT % 3))]}
-  echo "[Attempt $COUNT] Probing capacity in $FD..."
+  echo "[Attempt $COUNT] Probing capacity in$FD..."
 
   OUTPUT=$(oci compute instance launch \
     --compartment-id "$COMP_ID" \
@@ -168,16 +173,16 @@ while true; do
 
     if [ "$KEY_AUTO_GENERATED" -eq 1 ]; then
       echo "🔑 SSH KEY NOTICE:"
-      echo "A new private key was generated at: ~/.ssh/id_ed25519"
+      echo "A new private key was generated at: $GENERATED_KEY_PATH"
       echo "To display the private key content to copy to your local machine, run:"
-      echo "  cat ~/.ssh/id_ed25519"
+      echo "   cat $GENERATED_KEY_PATH"
       echo ""
       echo "On your local Mac / Linux machine, save it as a file (e.g. ~/.ssh/oci_arm_key) and connect:"
-      echo "  chmod 600 ~/.ssh/oci_arm_key"
-      echo "  ssh -i ~/.ssh/oci_arm_key ubuntu@$PUB_IP"
+      echo "   chmod 600 ~/.ssh/oci_arm_key"
+      echo "   ssh -i ~/.ssh/oci_arm_key ubuntu@$PUB_IP"
     else
       echo "Connect via SSH:"
-      echo "  ssh -i /path/to/your/private_key ubuntu@$PUB_IP"
+      echo "   ssh -i /path/to/your/private_key ubuntu@$PUB_IP"
     fi
     echo "=================================================="
     break
