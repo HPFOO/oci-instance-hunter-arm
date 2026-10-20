@@ -212,11 +212,11 @@ while true; do
   fi
 
   if echo "$OUTPUT" | grep -q "TooManyRequests"; then
-    SLEEP=$((RANDOM % 54 + 108))
+    SLEEP=$((RANDOM % 60 + 120))
     echo ">> Rate limit hit. Backing off for ${SLEEP}s..."
     sleep "$SLEEP"
   elif echo "$OUTPUT" | grep -iq "Out of host capacity"; then
-    SLEEP=$((RANDOM % 41 + 40))
+    SLEEP=$((RANDOM % 45 + 45))
     echo ">> Out of capacity in $FD. Retrying next FD in ${SLEEP}s..."
     sleep "$SLEEP"
   else
