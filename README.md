@@ -77,7 +77,19 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/hpfoo/oci-instance-hunte
 ```bash
 tmux attach -t hunt-arm
 ```
+---
+## 🧭 Managing Background Sessions
 
+```bash
+# Check running background sessions
+tmux ls
+
+# Reattach / check progress later
+tmux attach -t hunt-arm
+
+# Kill / remove the session completely (when provisioned or no longer needed)
+tmux kill-session -t hunt-arm
+```
 ---
 
 ## 🛠️ Architecture & Isolation
