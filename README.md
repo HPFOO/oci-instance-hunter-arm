@@ -34,28 +34,28 @@ When you execute the script, it prompts you to enter your desired compute hardwa
 
 ### 🔑 How SSH Keys Work (Beginner Guide)
 
-If you are new to SSH or do not have a key, don't worry—the script handles everything:
+If you are new to SSH or do not have a key, the script handles everything seamlessly without overriding existing credentials:
 
-1. **Option 3 (Auto-Generate - Recommended for Beginners)**:
-   - The script creates a new, FIPS-compliant RSA 4096-bit key pair on the fly inside Cloud Shell at `~/.ssh/id_rsa`.
+1. **Option 3 (Auto-Generate - Dedicated per Instance)**:
+   - The script creates a dedicated, FIPS-compliant RSA 4096-bit key pair specifically named after your instance: `~/.ssh/<instance-name>_id_rsa`.
+   - Running the script multiple times for different instances (ARM/AMD) will keep individual keys isolated.
 
-2. **How to get the key onto your local Mac / PC**:
+2. **How to get the private key onto your local Mac / PC**:
    - **Method A (Copy-Paste Text)**: In Cloud Shell, run:
      ```bash
-     cat ~/.ssh/id_rsa
+     cat ~/.ssh/<instance-name>_id_rsa
      ```
-     Copy the entire output starting from `-----BEGIN OPENSSH PRIVATE KEY-----` to `-----END OPENSSH PRIVATE KEY-----`. Save it on your local machine (e.g., `~/.ssh/oci_arm_key`) and set strict permissions:
+     Copy the entire block starting from `-----BEGIN OPENSSH PRIVATE KEY-----` to `-----END OPENSSH PRIVATE KEY-----`. Save it on your local machine (e.g., `~/.ssh/<instance-name>_key`) and set strict permissions:
      ```bash
-     chmod 600 ~/.ssh/oci_arm_key
+     chmod 600 ~/.ssh/<instance-name>_key
      ```
 
    - **Method B (Download File via Web GUI)**: 
-     Click the **Gear / Ellipsis icon** in the Cloud Shell top-right menu -> select **Download File** -> enter `/home/<your-user>/.ssh/id_rsa` (or simply `.ssh/id_rsa`).
+     Click the **Gear / Ellipsis icon** in the Cloud Shell top-right menu -> select **Download File** -> enter `.ssh/<instance-name>_id_rsa`.
 
 3. **Connect to your server**:
    ```bash
-   ssh -i ~/.ssh/oci_arm_key ubuntu@<YOUR_PUBLIC_IP>
-
+   ssh -i ~/.ssh/<instance-name>_key ubuntu@<YOUR_PUBLIC_IP>
 
 ---
 
