@@ -29,26 +29,28 @@ BOOT_GBS="${input_boot:-100}"
 
 echo ">> Configured: ${OCPUS} OCPU | ${RAM_GBS} GB RAM | ${BOOT_GBS} GB Boot Volume"
 
-# 3. SSH Key Handling (FIPS Mode Compliant)
+# 3. SSH Key Handling (Named per instance & FIPS Compliant)
 PUB_KEY="${SSH_KEY:-$2}"
 KEY_AUTO_GENERATED=0
-GENERATED_KEY_PATH=""
+INSTANCE_KEY_PATH="$HOME/.ssh/${MY_NAME}_id_rsa"
 
 if [ -z "$PUB_KEY" ]; then
-  if [ -f "$HOME/.ssh/id_rsa.pub" ]; then
-    echo ">> Detected existing key: ~/.ssh/id_rsa.pub"
+  if [ -f "${INSTANCE_KEY_PATH}.pub" ]; then
+    echo ">> Detected existing key for this instance: ${INSTANCE_KEY_PATH}.pub"
+    PUB_KEY=$(cat "${INSTANCE_KEY_PATH}.pub")
+    GENERATED_KEY_PATH="$INSTANCE_KEY_PATH"
+    KEY_AUTO_GENERATED=1
+  elif [ -f "$HOME/.ssh/id_rsa.pub" ]; then
+    echo ">> Detected general key: ~/.ssh/id_rsa.pub"
     PUB_KEY=$(cat "$HOME/.ssh/id_rsa.pub")
   elif [ -f "$HOME/.ssh/id_ed25519.pub" ]; then
-    echo ">> Detected existing key: ~/.ssh/id_ed25519.pub"
+    echo ">> Detected general key: ~/.ssh/id_ed25519.pub"
     PUB_KEY=$(cat "$HOME/.ssh/id_ed25519.pub")
-  elif [ -f "$HOME/.ssh/id_ecdsa.pub" ]; then
-    echo ">> Detected existing key: ~/.ssh/id_ecdsa.pub"
-    PUB_KEY=$(cat "$HOME/.ssh/id_ecdsa.pub")
   else
     echo ">> No default SSH key detected."
     echo "   1) Specify custom key file path (e.g., ~/.ssh/my_key.pub)"
     echo "   2) Paste public key string directly"
-    echo "   3) Auto-generate a new RSA 4096-bit key pair (FIPS Compliant)"
+    echo "   3) Auto-generate a dedicated RSA 4096-bit key pair for this instance"
     read -r -p "Select option [1/2/3, Default: 3]: " key_choice
     key_choice="${key_choice:-3}"
 
@@ -67,13 +69,13 @@ if [ -z "$PUB_KEY" ]; then
     elif [ "$key_choice" == "2" ]; then
       read -r -p "Paste your full SSH Public Key string: " PUB_KEY
     else
-      GENERATED_KEY_PATH="$HOME/.ssh/id_rsa"
-      echo ">> Generating a new RSA 4096-bit key pair at $GENERATED_KEY_PATH..."
+      GENERATED_KEY_PATH="$INSTANCE_KEY_PATH"
+      echo ">> Generating a new dedicated RSA 4096-bit key pair at $GENERATED_KEY_PATH..."
       mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
-      ssh-keygen -t rsa -b 4096 -N "" -f "$GENERATED_KEY_PATH" -C "oci-arm-auto-key"
+      ssh-keygen -t rsa -b 4096 -N "" -f "$GENERATED_KEY_PATH" -C "${MY_NAME}-key"
       PUB_KEY=$(cat "${GENERATED_KEY_PATH}.pub")
       KEY_AUTO_GENERATED=1
-      echo ">> Key created successfully!"
+      echo ">> Dedicated key created successfully!"
     fi
   fi
 fi
@@ -91,30 +93,40 @@ echo ">> Querying OCI tenancy & availability domain..."
 COMP_ID=$(oci iam tenancy get --tenancy-id "$OCI_TENANCY" --query "data.id" --raw-output)
 AD_NAME=$(oci iam availability-domain list --compartment-id "$COMP_ID" --query "data[0].name" --raw-output)
 
-# 5. Check or Create Dedicated Isolated VCN
+# 5. Check or Create Dedicated Isolated VCN (Fully Idempotent)
 VCN_NAME="${MY_NAME}-vcn"
 echo ">> Verifying isolated network: ${VCN_NAME}..."
-VCN_ID=$(oci network vcn list --compartment-id "$COMP_ID" --display-name "$VCN_NAME" --query "data[0].id" --raw-output 2>/dev/null || true)
 
+VCN_ID=$(oci network vcn list --compartment-id "$COMP_ID" --display-name "$VCN_NAME" --query "data[0].id" --raw-output 2>/dev/null || true)
 if [ -z "$VCN_ID" ] || [ "$VCN_ID" == "None" ] || [ "$VCN_ID" == "null" ]; then
   echo ">> Creating dedicated VCN (192.168.0.0/16)..."
   VCN_ID=$(oci network vcn create --compartment-id "$COMP_ID" --cidr-block "192.168.0.0/16" --display-name "$VCN_NAME" --query "data.id" --raw-output)
-
-  echo ">> Creating Internet Gateway..."
-  IG_ID=$(oci network internet-gateway create --compartment-id "$COMP_ID" --vcn-id "$VCN_ID" --is-enabled true --display-name "${MY_NAME}-igw" --query "data.id" --raw-output)
-
-  echo ">> Configuring default route (0.0.0.0/0 -> IGW)..."
-  RT_ID=$(oci network route-table list --compartment-id "$COMP_ID" --vcn-id "$VCN_ID" --query "data[0].id" --raw-output)
-  oci network route-table update --rt-id "$RT_ID" --route-rules "[{\"cidrBlock\":\"0.0.0.0/0\",\"networkEntityId\":\"$IG_ID\"}]" --force > /dev/null
-
-  echo ">> Creating Public Subnet (192.168.1.0/24)..."
-  SUB_ID=$(oci network subnet create --compartment-id "$COMP_ID" --vcn-id "$VCN_ID" --cidr-block "192.168.1.0/24" --display-name "${MY_NAME}-subnet" --query "data.id" --raw-output)
 else
-  echo ">> Reusing existing isolated network ($VCN_ID)..."
-  SUB_ID=$(oci network subnet list --compartment-id "$COMP_ID" --vcn-id "$VCN_ID" --display-name "${MY_NAME}-subnet" --query "data[0].id" --raw-output)
+  echo ">> Reusing existing VCN ($VCN_ID)..."
 fi
 
-# 6. Resolve Canonical Ubuntu 22.04 LTS ARM64 (aarch64) Image (Fixed String Parsing)
+IG_NAME="${MY_NAME}-igw"
+IG_ID=$(oci network internet-gateway list --compartment-id "$COMP_ID" --vcn-id "$VCN_ID" --display-name "$IG_NAME" --query "data[0].id" --raw-output 2>/dev/null || true)
+if [ -z "$IG_ID" ] || [ "$IG_ID" == "None" ] || [ "$IG_ID" == "null" ]; then
+  echo ">> Creating Internet Gateway ($IG_NAME)..."
+  IG_ID=$(oci network internet-gateway create --compartment-id "$COMP_ID" --vcn-id "$VCN_ID" --is-enabled true --display-name "$IG_NAME" --query "data.id" --raw-output)
+else
+  echo ">> Reusing existing Internet Gateway ($IG_ID)..."
+fi
+
+RT_ID=$(oci network route-table list --compartment-id "$COMP_ID" --vcn-id "$VCN_ID" --query "data[0].id" --raw-output)
+oci network route-table update --rt-id "$RT_ID" --route-rules "[{\"cidrBlock\":\"0.0.0.0/0\",\"networkEntityId\":\"$IG_ID\"}]" --force > /dev/null 2>&1 || true
+
+SUB_NAME="${MY_NAME}-subnet"
+SUB_ID=$(oci network subnet list --compartment-id "$COMP_ID" --vcn-id "$VCN_ID" --display-name "$SUB_NAME" --query "data[0].id" --raw-output 2>/dev/null || true)
+if [ -z "$SUB_ID" ] || [ "$SUB_ID" == "None" ] || [ "$SUB_ID" == "null" ]; then
+  echo ">> Creating Public Subnet (192.168.1.0/24)..."
+  SUB_ID=$(oci network subnet create --compartment-id "$COMP_ID" --vcn-id "$VCN_ID" --cidr-block "192.168.1.0/24" --display-name "$SUB_NAME" --query "data.id" --raw-output)
+else
+  echo ">> Reusing existing Public Subnet ($SUB_ID)..."
+fi
+
+# 6. Resolve Canonical Ubuntu 22.04 LTS ARM64 (aarch64) Image
 echo ">> Resolving latest Ubuntu 22.04 LTS aarch64 image..."
 IMG_ID=$(oci compute image list --compartment-id "$COMP_ID" \
   --operating-system "Canonical Ubuntu" \
@@ -182,15 +194,15 @@ while true; do
     echo ">> Public IP: $PUB_IP"
     echo "--------------------------------------------------"
 
-    if [ "$KEY_AUTO_GENERATED" -eq 1 ]; then
+    if [ "$KEY_AUTO_GENERATED" -eq 1 ] && [ -n "$GENERATED_KEY_PATH" ]; then
       echo "🔑 SSH KEY NOTICE:"
-      echo "A new private key was generated at: $GENERATED_KEY_PATH"
+      echo "A dedicated private key was generated at: $GENERATED_KEY_PATH"
       echo "To display the private key content to copy to your local machine, run:"
       echo "   cat $GENERATED_KEY_PATH"
       echo ""
-      echo "On your local Mac / Linux machine, save it as a file (e.g. ~/.ssh/oci_arm_key) and connect:"
-      echo "   chmod 600 ~/.ssh/oci_arm_key"
-      echo "   ssh -i ~/.ssh/oci_arm_key ubuntu@$PUB_IP"
+      echo "On your local Mac / Linux machine, save it as a file (e.g. ~/.ssh/${MY_NAME}_key) and connect:"
+      echo "   chmod 600 ~/.ssh/${MY_NAME}_key"
+      echo "   ssh -i ~/.ssh/${MY_NAME}_key ubuntu@$PUB_IP"
     else
       echo "Connect via SSH:"
       echo "   ssh -i /path/to/your/private_key ubuntu@$PUB_IP"
